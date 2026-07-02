@@ -89,6 +89,26 @@ def generate_empty_mask(reference_nifti_path: Path, output_path: Path):
     nib.save(empty_img, str(output_path))
 
 
+def copy_and_binarize_mask(src_path: Path, dest_path: Path):
+    """
+    Load a lesion mask, binarize it (all values > 0 become 1), and save it.
+    The PI-CAI dataset occasionally contains masks with values > 1 (e.g., 3),
+    which violates the strict binary [0, 1] expectation in dataset.json.
+    """
+    img = nib.load(str(src_path))
+    data = img.get_fdata()
+    
+    # Binarize: any value > 0 becomes 1
+    if np.any(data > 1) or np.any(data < 0):
+        binarized_data = (data > 0).astype(np.int8)
+        out_img = nib.Nifti1Image(binarized_data, img.affine, img.header)
+        out_img.set_data_dtype(np.int8)
+        nib.save(out_img, str(dest_path))
+    else:
+        # If it's already perfectly binary [0, 1], just copy directly for speed
+        shutil.copy2(str(src_path), str(dest_path))
+
+
 def convert_picai_to_nnunet(source_dir: Path, nnunet_raw: Path, max_cases: int = 0):
     """
     Main conversion function.
@@ -190,8 +210,8 @@ def convert_picai_to_nnunet(source_dir: Path, nnunet_raw: Path, max_cases: int =
         
         if not dest_mask.exists():
             if src_mask.exists():
-                # Lesion mask exists → copy directly (NO resampling!)
-                shutil.copy2(str(src_mask), str(dest_mask))
+                # Lesion mask exists → copy and binarize if necessary (handles label values > 1)
+                copy_and_binarize_mask(src_mask, dest_mask)
                 stats["masks_copied"] += 1
             else:
                 # Missing mask → generate all-zeros (negative/benign case)
