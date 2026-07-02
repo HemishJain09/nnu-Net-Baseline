@@ -115,6 +115,12 @@ def convert_picai_to_nnunet(source_dir: Path, nnunet_raw: Path, max_cases: int =
     
     # Define output directories
     dataset_dir = nnunet_raw / DATASET_NAME
+    
+    # Clean output directory if it exists to prevent leftover files from previous runs
+    if dataset_dir.exists():
+        print(f"🧹 Cleaning existing dataset directory: {dataset_dir}")
+        shutil.rmtree(dataset_dir)
+        
     images_dir = dataset_dir / "imagesTr"
     labels_dir = dataset_dir / "labelsTr"
     
