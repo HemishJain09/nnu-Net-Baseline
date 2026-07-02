@@ -15,9 +15,16 @@ Handles the "Missing Mask" trap: generates all-zeros NIfTI masks for the 207
 benign patients who lack lesion annotations.
 
 Usage:
+  # Full dataset:
   python convert_picai_to_nnunet.py \
     --source_dir /path/to/PI-CAI_pre-processed \
     --nnunet_raw /path/to/nnUNet_raw
+
+  # Sanity check (10 patients only):
+  python convert_picai_to_nnunet.py \
+    --source_dir /path/to/PI-CAI_pre-processed \
+    --nnunet_raw /path/to/nnUNet_raw \
+    --max_cases 10
 
 Author: Auto-generated for PI-CAI nnUNet v2 pipeline
 ===============================================================================
@@ -82,7 +89,7 @@ def generate_empty_mask(reference_nifti_path: Path, output_path: Path):
     nib.save(empty_img, str(output_path))
 
 
-def convert_picai_to_nnunet(source_dir: Path, nnunet_raw: Path):
+def convert_picai_to_nnunet(source_dir: Path, nnunet_raw: Path, max_cases: int = 0):
     """
     Main conversion function.
     
@@ -118,6 +125,11 @@ def convert_picai_to_nnunet(source_dir: Path, nnunet_raw: Path):
     # Discover all cases from t2/ directory (authoritative source — always 1500)
     t2_files = sorted(list(t2_dir.glob("*.nii.gz")))
     print(f"Found {len(t2_files)} T2W scans in {t2_dir}")
+    
+    # Apply max_cases limit if specified (for sanity check mode)
+    if max_cases > 0 and max_cases < len(t2_files):
+        t2_files = t2_files[:max_cases]
+        print(f"⚡ SANITY CHECK MODE: Processing only {max_cases} cases")
     
     # Track statistics
     stats = {
@@ -242,6 +254,12 @@ if __name__ == "__main__":
         required=True,
         help="Path to nnUNet_raw directory (will be created if needed)",
     )
+    parser.add_argument(
+        "--max_cases",
+        type=int,
+        default=0,
+        help="Max number of cases to process (0 = all). Use 10-15 for sanity check.",
+    )
     
     args = parser.parse_args()
     
@@ -254,4 +272,4 @@ if __name__ == "__main__":
     if not (source_dir / "t2").exists():
         raise FileNotFoundError(f"Expected t2/ subdirectory in {source_dir}")
     
-    convert_picai_to_nnunet(source_dir, nnunet_raw)
+    convert_picai_to_nnunet(source_dir, nnunet_raw, max_cases=args.max_cases)
