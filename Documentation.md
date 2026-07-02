@@ -62,3 +62,20 @@ When you run Phase 2 in Colab, here is exactly what happens under the hood:
 > **Step 5: Training Loop**
 > The notebook uses a bash `sed` command to crack open the internal `nnUNetTrainer.py` source file and forcefully change `self.num_epochs` from 1000 to 250. 
 > Finally, `!nnUNetv2_train 500 3d_fullres 0` is called. The GPU spins up, reads from the local SSD, and begins training Fold 0. After every 50 epochs, the model state is saved securely into your persistent Google Drive folder.
+
+---
+
+## 4. nnU-Net Internal Preprocessing Explained
+
+When `nnUNetv2_plan_and_preprocess` runs, it executes highly optimized, autonomous operations on your data. Here is exactly what happens under the hood, and why it is safe for our 6-channel setup:
+
+### A. Intensity Normalization
+By default, nnU-Net calculates the mean and standard deviation of intensities across the dataset and applies **Z-Score Normalization** `(x - mean) / std` to the T2, ADC, and HBV channels. 
+**What about the Zonal Masks?** Because the 3 Zonal Masks are provided as input channels (Channels 3, 4, and 5), nnU-Net treats them like MRI scans and will also apply Z-score normalization. This simply shifts the binary `0` and `1` values to something like `-0.5` and `+2.3`. This **will not break the pipeline**; convolutional neural networks are completely scale-invariant and will effortlessly learn this new continuous distribution.
+
+### B. Resampling (Voxel Spacing)
+MRI scans from different hospitals often have different voxel dimensions (e.g., $3mm \times 0.5mm \times 0.5mm$). nnU-Net calculates the median spacing of the dataset and resamples all images to match. 
+**Interpolation**: It uses 3rd-order spline interpolation for the input channels, and Nearest Neighbor for the lesion mask. This means your Zonal Masks will get slightly "smoothed" at the edges (producing soft, continuous boundaries instead of harsh binary pixels). This is actually beneficial for spatial priors as it reduces aliasing artifacts.
+
+### C. Dynamic Data Augmentation (During Training)
+While training, the dataloader applies aggressive "on-the-fly" data augmentation. It will randomly rotate, scale, flip, and apply elastic deformations to your images to artificially expand your dataset and prevent overfitting. It seamlessly applies these identical transformations to all 6 input channels and the lesion mask simultaneously, ensuring perfect spatial alignment is never broken.
