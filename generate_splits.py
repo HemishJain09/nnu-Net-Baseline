@@ -22,7 +22,7 @@ from sklearn.model_selection import GroupKFold
 DATASET_NAME = "Dataset500_PICAI"
 NUM_FOLDS = 5
 
-def generate_splits(nnunet_raw: Path, nnunet_preprocessed: Path, marksheet_path: Path, train_centers: list):
+def generate_splits(nnunet_raw: Path, nnunet_preprocessed: Path, marksheet_path: Path, train_centers: list, bootcamp: bool = False):
     case_ids = []
     
     preprocessed_dir = nnunet_preprocessed / DATASET_NAME / "nnUNetPlans_3d_fullres"
@@ -50,8 +50,9 @@ def generate_splits(nnunet_raw: Path, nnunet_preprocessed: Path, marksheet_path:
     df = pd.read_csv(marksheet_path)
     df['patient_id'] = df['patient_id'].astype(str)
     patient_to_center = dict(zip(df['patient_id'], df['center']))
+    patient_to_cancer = dict(zip(df['patient_id'], df['case_csPCa']))
     
-    # Filter cases by train_centers
+    # Filter cases by train_centers and bootcamp mode
     valid_cases = []
     case_to_patient = {}
     patient_groups = defaultdict(list)
@@ -59,14 +60,22 @@ def generate_splits(nnunet_raw: Path, nnunet_preprocessed: Path, marksheet_path:
     for case in case_ids:
         pid = case.split("_")[0]
         center = patient_to_center.get(pid, "UNKNOWN")
+        has_cancer = patient_to_cancer.get(pid, "NO") == "YES"
+        
         if center in train_centers:
+            # If Bootcamp is ON, completely drop healthy patients
+            if bootcamp and not has_cancer:
+                continue
+                
             valid_cases.append(case)
             case_to_patient[case] = pid
             patient_groups[pid].append(case)
             
     print(f"\n--- Filtering for Training Centers: {train_centers} ---")
+    if bootcamp:
+        print(f"🚨 BOOTCAMP MODE ACTIVE: Excluding all healthy patients! 🚨")
     print(f"Cases kept for Training/Validation: {len(valid_cases)}")
-    print(f"Cases completely excluded (Holdout): {len(case_ids) - len(valid_cases)}")
+    print(f"Cases completely excluded: {len(case_ids) - len(valid_cases)}")
     
     unique_patients = sorted(patient_groups.keys())
     patient_to_group_id = {pid: idx for idx, pid in enumerate(unique_patients)}
@@ -111,6 +120,7 @@ if __name__ == "__main__":
     parser.add_argument("--nnunet_preprocessed", type=str, required=True)
     parser.add_argument("--marksheet", type=str, required=True, help="Path to marksheet.csv")
     parser.add_argument("--train_centers", type=str, nargs='+', required=True, help="Centers to include in training (e.g. RUMC ZGT)")
+    parser.add_argument("--bootcamp", action="store_true", help="Bootcamp mode: Only include patients with cancer")
     args = parser.parse_args()
     
-    generate_splits(Path(args.nnunet_raw), Path(args.nnunet_preprocessed), Path(args.marksheet), args.train_centers)
+    generate_splits(Path(args.nnunet_raw), Path(args.nnunet_preprocessed), Path(args.marksheet), args.train_centers, args.bootcamp)
