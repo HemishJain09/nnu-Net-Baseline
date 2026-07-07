@@ -14,37 +14,30 @@ class AdaptiveFocalLoss(nn.Module):
         self.ignore_index = ignore_index
 
     def forward(self, net_output, target):
-        # 1. Standard Cross Entropy
         ce_loss = self.ce(net_output, target)
         pt = torch.exp(-ce_loss)
         
-        # 2. Dynamic Alpha (Batch Balancing)
-        # target is (B, X, Y, Z). We calculate ratio of foreground (1) to total valid pixels.
         valid_mask = target != self.ignore_index
         valid_targets = target[valid_mask]
-        
         num_positive = valid_targets.sum().float()
-        total_valid = valid_mask.sum().float()
         
-        # Guard against zero-division (e.g., completely empty or perfectly uniform batches)
-        if total_valid == 0 or num_positive == 0 or num_positive == total_valid:
-            alpha_tensor = torch.ones_like(target, dtype=torch.float32)
-        else:
-            pos_ratio = num_positive / total_valid
-            neg_ratio = 1.0 - pos_ratio
+        # 1. The Silence Protocol: If the batch has NO cancer, drastically reduce its gradient
+        # so it doesn't cause catastrophic forgetting on healthy patients.
+        if num_positive == 0:
+            return (ce_loss * 0.01).mean()
             
-            # Inverse weighting: if pos_ratio is 0.01, positive class gets weight 0.99
-            alpha_tensor = torch.where(target == 1, neg_ratio, pos_ratio)
-            
+        # 2. Static Alpha: Hard-code a massive weight for cancer pixels (100.0) 
+        # and standard weight for background (1.0).
+        alpha_tensor = torch.where(target == 1, 100.0, 1.0)
+        
         # 3. Dynamic Gamma
-        # If the network is highly confident (pt ~ 1) but wrong, (1 - pt) is small. Wait.
-        # If the network is highly confident and WRONG, pt is ~ 0. So (1 - pt) is ~ 1.
-        # This pushes adaptive_gamma to base_gamma + 1.0, increasing penalty.
         adaptive_gamma = self.base_gamma + (1.0 - pt)
         
-        # 4. Adaptive Focal Loss
+        # 4. Focal Loss Calculation
         focal_loss = alpha_tensor * ((1.0 - pt) ** adaptive_gamma) * ce_loss
-        return focal_loss.sum() / alpha_tensor.sum()
+        
+        # 5. Mean Reduction (to divide by Batch*Pixels and avoid PyTorch Gradient Clipper)
+        return focal_loss.mean()
 
 class DC_and_AdaptiveFocal_loss(nn.Module):
     def __init__(self, soft_dice_kwargs, ce_kwargs, weight_ce=1, weight_dice=1, ignore_label=None, dice_class=MemoryEfficientSoftDiceLoss):
