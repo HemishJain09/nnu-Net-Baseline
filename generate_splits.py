@@ -27,15 +27,10 @@ def generate_splits(nnunet_raw: Path, nnunet_preprocessed: Path, marksheet_path:
     
     preprocessed_dir = nnunet_preprocessed / DATASET_NAME / "nnUNetPlans_3d_fullres"
     if preprocessed_dir.exists():
-        preprocessed_files = list(preprocessed_dir.glob("*.npy"))
-        if not preprocessed_files:
-            preprocessed_files = list(preprocessed_dir.glob("*.npz"))
-        if not preprocessed_files:
-            preprocessed_files = list(preprocessed_dir.glob("*.b2nd"))
-        
+        preprocessed_files = list(preprocessed_dir.glob("*.pkl"))
         if preprocessed_files:
             preprocessed_files = sorted(preprocessed_files)
-            case_ids = [f.stem for f in preprocessed_files]
+            case_ids = [f.stem for f in preprocessed_files if not f.stem.endswith('_seg')]
             print(f"Loaded {len(case_ids)} case IDs from preprocessed directory.")
 
     if not case_ids:
