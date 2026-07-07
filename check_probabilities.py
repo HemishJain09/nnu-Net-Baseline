@@ -58,6 +58,7 @@ def check_probs():
     tensor_data = torch.from_numpy(data).unsqueeze(0).cuda()
     
     print("\n[3/3] Running Forward Pass (Full 3D Volume)...")
+    predictor.network.cuda()
     predictor.network.eval()
     with torch.no_grad():
         logits = predictor.network(tensor_data)
