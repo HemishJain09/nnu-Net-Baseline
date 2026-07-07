@@ -6,19 +6,47 @@ from nnunetv2.training.loss.dice import MemoryEfficientSoftDiceLoss
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 from nnunetv2.utilities.helpers import softmax_helper_dim1
 
-class FocalLoss(nn.Module):
-    def __init__(self, gamma=2.0, alpha=None, reduction='mean', ignore_index=-100, **kwargs):
-        super(FocalLoss, self).__init__()
-        self.gamma = gamma
+class AdaptiveFocalLoss(nn.Module):
+    def __init__(self, base_gamma=2.0, ignore_index=-100, **kwargs):
+        super(AdaptiveFocalLoss, self).__init__()
+        self.base_gamma = base_gamma
         self.ce = nn.CrossEntropyLoss(reduction='none', ignore_index=ignore_index, **kwargs)
+        self.ignore_index = ignore_index
 
     def forward(self, net_output, target):
+        # 1. Standard Cross Entropy
         ce_loss = self.ce(net_output, target)
         pt = torch.exp(-ce_loss)
-        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
-        return focal_loss.mean()
+        
+        # 2. Dynamic Alpha (Batch Balancing)
+        # target is (B, X, Y, Z). We calculate ratio of foreground (1) to total valid pixels.
+        valid_mask = target != self.ignore_index
+        valid_targets = target[valid_mask]
+        
+        num_positive = valid_targets.sum().float()
+        total_valid = valid_mask.sum().float()
+        
+        # Guard against zero-division (e.g., completely empty or perfectly uniform batches)
+        if total_valid == 0 or num_positive == 0 or num_positive == total_valid:
+            alpha_tensor = torch.ones_like(target, dtype=torch.float32)
+        else:
+            pos_ratio = num_positive / total_valid
+            neg_ratio = 1.0 - pos_ratio
+            
+            # Inverse weighting: if pos_ratio is 0.01, positive class gets weight 0.99
+            alpha_tensor = torch.where(target == 1, neg_ratio, pos_ratio)
+            
+        # 3. Dynamic Gamma
+        # If the network is highly confident (pt ~ 1) but wrong, (1 - pt) is small. Wait.
+        # If the network is highly confident and WRONG, pt is ~ 0. So (1 - pt) is ~ 1.
+        # This pushes adaptive_gamma to base_gamma + 1.0, increasing penalty.
+        adaptive_gamma = self.base_gamma + (1.0 - pt)
+        
+        # 4. Adaptive Focal Loss
+        focal_loss = alpha_tensor * ((1.0 - pt) ** adaptive_gamma) * ce_loss
+        return focal_loss.sum() / alpha_tensor.sum()
 
-class DC_and_Focal_loss(nn.Module):
+class DC_and_AdaptiveFocal_loss(nn.Module):
     def __init__(self, soft_dice_kwargs, ce_kwargs, weight_ce=1, weight_dice=1, ignore_label=None, dice_class=MemoryEfficientSoftDiceLoss):
         super().__init__()
         if ignore_label is not None:
@@ -28,7 +56,7 @@ class DC_and_Focal_loss(nn.Module):
         self.weight_ce = weight_ce
         self.ignore_label = ignore_label
 
-        self.ce = FocalLoss(**ce_kwargs)
+        self.ce = AdaptiveFocalLoss(**ce_kwargs)
         self.dc = dice_class(apply_nonlin=softmax_helper_dim1, **soft_dice_kwargs)
 
     def forward(self, net_output: torch.Tensor, target: torch.Tensor):
@@ -48,7 +76,7 @@ class DC_and_Focal_loss(nn.Module):
 
 class nnUNetTrainerFocalLoss(nnUNetTrainer):
     def build_loss(self):
-        loss = DC_and_Focal_loss(
+        loss = DC_and_AdaptiveFocal_loss(
             {'batch_dice': self.configuration_manager.batch_dice,
              'smooth': 1e-5, 'do_bg': False, 'ddp': self.is_ddp},
             {},
@@ -75,7 +103,7 @@ def inject():
     with open(target_file, "w") as f:
         f.write(FOCAL_LOSS_CODE)
         
-    print(f"✅ Successfully injected nnUNetTrainerFocalLoss into {target_file}")
+    print(f"✅ Successfully injected Adaptive nnUNetTrainerFocalLoss into {target_file}")
 
 if __name__ == "__main__":
     inject()
