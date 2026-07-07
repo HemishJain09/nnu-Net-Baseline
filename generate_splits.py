@@ -30,6 +30,8 @@ def generate_splits(nnunet_raw: Path, nnunet_preprocessed: Path, marksheet_path:
         preprocessed_files = list(preprocessed_dir.glob("*.npy"))
         if not preprocessed_files:
             preprocessed_files = list(preprocessed_dir.glob("*.npz"))
+        if not preprocessed_files:
+            preprocessed_files = list(preprocessed_dir.glob("*.b2nd"))
         
         if preprocessed_files:
             preprocessed_files = sorted(preprocessed_files)
