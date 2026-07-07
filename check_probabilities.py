@@ -23,7 +23,7 @@ def check_probs():
         allow_tqdm=True
     )
 
-    checkpoint_dir = '/content/drive/MyDrive/PI-CAI_nnUNet_Results/Dataset500_PICAI/nnUNetTrainerFocalLoss__nnUNetPlans__3d_fullres/fold_0'
+    checkpoint_dir = '/content/drive/MyDrive/PI-CAI_nnUNet_Results/Dataset500_PICAI/nnUNetTrainerFocalLoss__nnUNetPlans__3d_fullres'
     if not os.path.exists(checkpoint_dir):
         print(f"❌ Error: Checkpoint directory not found at {checkpoint_dir}")
         print("Please ensure your Google Drive is mounted!")
