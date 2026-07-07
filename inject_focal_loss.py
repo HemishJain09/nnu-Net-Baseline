@@ -7,7 +7,7 @@ from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
 from nnunetv2.utilities.helpers import softmax_helper_dim1
 
 class AdaptiveFocalLoss(nn.Module):
-    def __init__(self, base_gamma=2.0, ignore_index=-100, **kwargs):
+    def __init__(self, base_gamma=4.0, ignore_index=-100, **kwargs):
         super(AdaptiveFocalLoss, self).__init__()
         self.base_gamma = base_gamma
         self.ce = nn.CrossEntropyLoss(reduction='none', ignore_index=ignore_index, **kwargs)
@@ -80,7 +80,7 @@ class nnUNetTrainerFocalLoss(nnUNetTrainer):
             {'batch_dice': self.configuration_manager.batch_dice,
              'smooth': 1e-5, 'do_bg': False, 'ddp': self.is_ddp},
             {},
-            weight_ce=1, weight_dice=1,
+            weight_ce=2, weight_dice=1,
             ignore_label=self.label_manager.ignore_label,
             dice_class=MemoryEfficientSoftDiceLoss
         )
