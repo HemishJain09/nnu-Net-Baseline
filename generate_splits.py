@@ -23,12 +23,19 @@ DATASET_NAME = "Dataset500_PICAI"
 NUM_FOLDS = 5
 
 def generate_splits(nnunet_raw: Path, nnunet_preprocessed: Path, marksheet_path: Path, train_centers: list):
-    labels_dir = nnunet_raw / DATASET_NAME / "labelsTr"
-    if not labels_dir.exists():
-        raise FileNotFoundError(f"labelsTr directory not found at {labels_dir}.")
-    
-    label_files = sorted(list(labels_dir.glob("*.nii.gz")))
-    case_ids = [f.name.replace(".nii.gz", "") for f in label_files]
+    preprocessed_dir = nnunet_preprocessed / DATASET_NAME / "nnUNetPlans_3d_fullres"
+    if preprocessed_dir.exists() and len(list(preprocessed_dir.glob("*.npz"))) > 0:
+        preprocessed_files = sorted(list(preprocessed_dir.glob("*.npz")))
+        case_ids = [f.name.replace(".npz", "") for f in preprocessed_files]
+        print(f"Loaded {len(case_ids)} case IDs from preprocessed directory.")
+    else:
+        labels_dir = nnunet_raw / DATASET_NAME / "labelsTr"
+        if not labels_dir.exists():
+            raise FileNotFoundError(f"Neither preprocessed data nor labelsTr directory found.")
+        
+        label_files = sorted(list(labels_dir.glob("*.nii.gz")))
+        case_ids = [f.name.replace(".nii.gz", "") for f in label_files]
+        print(f"Loaded {len(case_ids)} case IDs from raw labelsTr directory.")
     print(f"Total cases in dataset folder: {len(case_ids)}")
     
     df = pd.read_csv(marksheet_path)
