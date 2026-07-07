@@ -54,8 +54,24 @@ def check_probs():
     print(f"      Loading: {os.path.basename(sample_data)}")
     data = blosc2.open(urlpath=sample_data, mode='r')[:]
     
-    # data is (6, Z, Y, X). Convert to tensor (1, 6, Z, Y, X)
-    tensor_data = torch.from_numpy(data).unsqueeze(0).cuda()
+    # The network is mathematically built for 16x320x320 sliding window patches.
+    # To avoid U-Net decoder shape mismatch, we will extract a perfect central crop.
+    Z, Y, X = data.shape[1:]
+    target_z, target_y, target_x = 16, 320, 320
+    
+    start_z = max(0, (Z - target_z) // 2)
+    start_y = max(0, (Y - target_y) // 2)
+    start_x = max(0, (X - target_x) // 2)
+    
+    crop = np.zeros((data.shape[0], target_z, target_y, target_x), dtype=data.dtype)
+    sz = min(target_z, Z - start_z)
+    sy = min(target_y, Y - start_y)
+    sx = min(target_x, X - start_x)
+    
+    crop[:, :sz, :sy, :sx] = data[:, start_z:start_z+sz, start_y:start_y+sy, start_x:start_x+sx]
+    
+    # Convert to tensor (1, 6, 16, 320, 320)
+    tensor_data = torch.from_numpy(crop).unsqueeze(0).cuda()
     
     print("\n[3/3] Running Forward Pass (Full 3D Volume)...")
     predictor.network.cuda()
