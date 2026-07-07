@@ -23,12 +23,20 @@ DATASET_NAME = "Dataset500_PICAI"
 NUM_FOLDS = 5
 
 def generate_splits(nnunet_raw: Path, nnunet_preprocessed: Path, marksheet_path: Path, train_centers: list):
+    case_ids = []
+    
     preprocessed_dir = nnunet_preprocessed / DATASET_NAME / "nnUNetPlans_3d_fullres"
-    if preprocessed_dir.exists() and len(list(preprocessed_dir.glob("*.npz"))) > 0:
-        preprocessed_files = sorted(list(preprocessed_dir.glob("*.npz")))
-        case_ids = [f.name.replace(".npz", "") for f in preprocessed_files]
-        print(f"Loaded {len(case_ids)} case IDs from preprocessed directory.")
-    else:
+    if preprocessed_dir.exists():
+        preprocessed_files = list(preprocessed_dir.glob("*.npy"))
+        if not preprocessed_files:
+            preprocessed_files = list(preprocessed_dir.glob("*.npz"))
+        
+        if preprocessed_files:
+            preprocessed_files = sorted(preprocessed_files)
+            case_ids = [f.stem for f in preprocessed_files]
+            print(f"Loaded {len(case_ids)} case IDs from preprocessed directory.")
+
+    if not case_ids:
         labels_dir = nnunet_raw / DATASET_NAME / "labelsTr"
         if not labels_dir.exists():
             raise FileNotFoundError(f"Neither preprocessed data nor labelsTr directory found.")
@@ -36,6 +44,10 @@ def generate_splits(nnunet_raw: Path, nnunet_preprocessed: Path, marksheet_path:
         label_files = sorted(list(labels_dir.glob("*.nii.gz")))
         case_ids = [f.name.replace(".nii.gz", "") for f in label_files]
         print(f"Loaded {len(case_ids)} case IDs from raw labelsTr directory.")
+        
+    if not case_ids:
+        raise ValueError("No case IDs found in either preprocessed or raw directories!")
+        
     print(f"Total cases in dataset folder: {len(case_ids)}")
     
     df = pd.read_csv(marksheet_path)
