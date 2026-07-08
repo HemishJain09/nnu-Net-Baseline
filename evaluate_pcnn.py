@@ -7,8 +7,10 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
     print("\n--- Running Official picai_eval Metrics ---")
     try:
         from picai_eval import evaluate
+        from report_guided_annotation import extract_lesion_candidates
     except ImportError:
-        print("picai_eval not installed. Please run: pip install picai_eval")
+        print("Required libraries missing! Please run:")
+        print("pip install picai_eval report_guided_annotation")
         return
         
     import pandas as pd
@@ -103,7 +105,8 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
         y_true=y_true_files,
         y_det=valid_y_det,
         subject_list=[Path(f).name.replace(".nii.gz", "") for f in y_true_files],
-        num_parallel_calls=2
+        num_parallel_calls=2,
+        y_det_postprocess_func=lambda pred: extract_lesion_candidates(pred)[0]
     )
     
     print("\n" + "="*50)
