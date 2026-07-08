@@ -2,6 +2,7 @@ import argparse
 import numpy as np
 import SimpleITK as sitk
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
     print("\n--- Running Official picai_eval Metrics ---")
@@ -41,8 +42,9 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
     
     y_det_files = []
     
-    print("\n--- Extracting Continuous Probabilities for AUROC ---")
-    for nii_file in pcnn_nii_files:
+    print("\n--- Extracting Continuous Probabilities for AUROC (Parallelized) ---")
+    
+    def process_file(nii_file):
         case_id = nii_file.name.replace(".nii.gz", "")
         npz_file = val_dir / f"{case_id}.npz"
         prob_nii = prob_dir / f"{case_id}.nii.gz"
@@ -69,10 +71,25 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
             prob_img.CopyInformation(ref_img)
             
             sitk.WriteImage(prob_img, str(prob_nii))
-            y_det_files.append(prob_nii)
+            return prob_nii
         else:
             # Fallback to binary mask (this will ruin AUROC, but it's safe)
-            y_det_files.append(nii_file)
+            return nii_file
+            
+    # Run extraction in parallel using 4-8 threads depending on CPU
+    import multiprocessing
+    num_workers = min(8, multiprocessing.cpu_count() * 2)
+    
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
+        futures = {executor.submit(process_file, f): f for f in pcnn_nii_files}
+        
+        for i, future in enumerate(as_completed(futures), 1):
+            y_det_files.append(future.result())
+            if i % 50 == 0 or i == len(pcnn_nii_files):
+                print(f"Extracted {i}/{len(pcnn_nii_files)} files...")
+            
+    # Sort files to ensure consistency
+    y_det_files.sort(key=lambda x: str(x))
             
     if y_det_files[0].parent == prob_dir:
         print("Successfully extracted continuous probabilities! Your AUROC will be accurate.")
