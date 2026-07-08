@@ -1,7 +1,7 @@
 import argparse
 from pathlib import Path
 
-def evaluate_metrics(val_dir: Path, gt_dir: Path):
+def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
     print("\n--- Running Official picai_eval Metrics ---")
     try:
         from picai_eval import evaluate
@@ -9,8 +9,22 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path):
         print("picai_eval not installed. Please run: pip install picai_eval")
         return
         
+    import pandas as pd
+    df = pd.read_csv(marksheet_path)
+    df['patient_id'] = df['patient_id'].astype(str)
+    pcnn_patients = set(df[df['center'] == 'PCNN']['patient_id'].tolist())
+        
     print(f"Scanning for predictions in: {val_dir}")
-    y_det_files = sorted(list(val_dir.glob("*.nii.gz")))
+    all_y_det_files = sorted(list(val_dir.glob("*.nii.gz")))
+    
+    # Filter ONLY PCNN cases
+    y_det_files = []
+    for f in all_y_det_files:
+        patient_id = f.name.split("_")[0]
+        if patient_id in pcnn_patients:
+            y_det_files.append(f)
+            
+    print(f"Found {len(all_y_det_files)} total files, filtered down to {len(y_det_files)} PCNN cases.")
     
     if len(y_det_files) == 0:
         print("No prediction .nii.gz files found! Did nnUNetv2_train --val run successfully?")
@@ -51,6 +65,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--val_dir", type=str, required=True, help="Path to nnUNet validation output folder")
     parser.add_argument("--gt_dir", type=str, required=True, help="Path to gt_segmentations folder in nnUNet_preprocessed")
+    parser.add_argument("--marksheet", type=str, required=True, help="Path to marksheet.csv")
     args = parser.parse_args()
     
-    evaluate_metrics(Path(args.val_dir), Path(args.gt_dir))
+    evaluate_metrics(Path(args.val_dir), Path(args.gt_dir), Path(args.marksheet))
