@@ -1,4 +1,6 @@
 import argparse
+import numpy as np
+import SimpleITK as sitk
 from pathlib import Path
 
 def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
@@ -18,13 +20,54 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
     all_y_det_files = sorted(list(val_dir.glob("*.nii.gz")))
     
     # Filter ONLY PCNN cases
-    y_det_files = []
+    pcnn_nii_files = []
     for f in all_y_det_files:
         patient_id = f.name.split("_")[0]
         if patient_id in pcnn_patients:
-            y_det_files.append(f)
+            pcnn_nii_files.append(f)
             
-    print(f"Found {len(all_y_det_files)} total files, filtered down to {len(y_det_files)} PCNN cases.")
+    print(f"Found {len(all_y_det_files)} total files, filtered down to {len(pcnn_nii_files)} PCNN cases.")
+    
+    if len(pcnn_nii_files) == 0:
+        print("No prediction files found! Did nnUNetv2_train --val run successfully?")
+        return
+        
+    # Check if .npz continuous probabilities exist!
+    # AUROC requires continuous probabilities. If we pass binary masks, AUROC is fundamentally broken.
+    prob_dir = val_dir / "continuous_probabilities"
+    prob_dir.mkdir(parents=True, exist_ok=True)
+    
+    y_det_files = []
+    
+    print("\n--- Extracting Continuous Probabilities for AUROC ---")
+    for nii_file in pcnn_nii_files:
+        case_id = nii_file.name.replace(".nii.gz", "")
+        npz_file = val_dir / f"{case_id}.npz"
+        prob_nii = prob_dir / f"{case_id}.nii.gz"
+        
+        if npz_file.exists():
+            # Load the softmax probabilities from nnU-Net
+            data = np.load(npz_file)
+            probs = data['probabilities'] # shape: (num_classes, Z, Y, X)
+            cancer_prob = probs[1] # Class 1 (Cancer)
+            
+            # Read the geometry from the binary prediction .nii.gz
+            ref_img = sitk.ReadImage(str(nii_file))
+            
+            # Convert probability array to NIfTI
+            prob_img = sitk.GetImageFromArray(cancer_prob)
+            prob_img.CopyInformation(ref_img)
+            
+            sitk.WriteImage(prob_img, str(prob_nii))
+            y_det_files.append(prob_nii)
+        else:
+            # Fallback to binary mask (this will ruin AUROC, but it's safe)
+            y_det_files.append(nii_file)
+            
+    if y_det_files[0].parent == prob_dir:
+        print("Successfully extracted continuous probabilities! Your AUROC will be accurate.")
+    else:
+        print("⚠️ WARNING: .npz probability files not found! Using binary masks. Your AUROC will be artificially low (near 0.5) because binary masks do not contain confidence scores!")
     
     if len(y_det_files) == 0:
         print("No prediction .nii.gz files found! Did nnUNetv2_train --val run successfully?")
@@ -59,6 +102,9 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
     print("="*50)
     print(f"Patient-Level AUROC: {metrics.auroc:.4f}")
     print(f"Lesion-Level AP:     {metrics.AP:.4f}")
+    if y_det_files[0].parent != prob_dir:
+        print("\n⚠️ NOTE: These scores were calculated using BINARY MASKS because .npz files were missing.")
+        print("To get your true AUROC, you MUST pass --save_probabilities to your predict command.")
     print("="*50)
 
 if __name__ == "__main__":
