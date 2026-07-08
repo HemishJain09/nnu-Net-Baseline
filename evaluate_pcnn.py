@@ -49,6 +49,10 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
         npz_file = val_dir / f"{case_id}.npz"
         prob_nii = prob_dir / f"{case_id}.nii.gz"
         
+        if prob_nii.exists():
+            # Skip extraction if we already generated it previously!
+            return prob_nii
+            
         if npz_file.exists():
             # Load the softmax probabilities from nnU-Net
             data = np.load(npz_file)
