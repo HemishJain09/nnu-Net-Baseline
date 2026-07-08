@@ -36,6 +36,13 @@ def setup_pcnn_test_set(nnunet_raw: Path, marksheet_path: Path):
     all_label_files = list(labels_tr.glob("*.nii.gz"))
     pcnn_cases = []
     
+    print(f"DEBUG: Found {len(all_label_files)} total files in {labels_tr}")
+    if len(all_label_files) > 0:
+        print(f"DEBUG: First file name: {all_label_files[0].name}")
+    print(f"DEBUG: Total PCNN patients in marksheet: {len(pcnn_patients)}")
+    if len(pcnn_patients) > 0:
+        print(f"DEBUG: First 5 PCNN patient IDs from marksheet: {pcnn_patients[:5]}")
+        
     for label_file in all_label_files:
         case_id = label_file.name.replace(".nii.gz", "")
         patient_id = case_id.split("_")[0]
