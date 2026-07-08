@@ -51,6 +51,11 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
             probs = data['probabilities'] # shape: (num_classes, Z, Y, X)
             cancer_prob = probs[1] # Class 1 (Cancer)
             
+            # MEMORY LEAK FIX: Zero out ultra-low confidence background noise
+            # This prevents picai_eval from generating millions of useless lesion candidates
+            # and blowing up the RAM to 82 GB!
+            cancer_prob[cancer_prob < 0.1] = 0.0
+            
             # Read the geometry from the binary prediction .nii.gz
             ref_img = sitk.ReadImage(str(nii_file))
             
@@ -94,7 +99,8 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
     metrics = evaluate(
         y_true=y_true_files,
         y_det=valid_y_det,
-        subject_list=[Path(f).name.replace(".nii.gz", "") for f in y_true_files]
+        subject_list=[Path(f).name.replace(".nii.gz", "") for f in y_true_files],
+        num_parallel_calls=4
     )
     
     print("\n" + "="*50)
