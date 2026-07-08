@@ -49,7 +49,10 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
             # Load the softmax probabilities from nnU-Net
             data = np.load(npz_file)
             probs = data['probabilities'] # shape: (num_classes, Z, Y, X)
-            cancer_prob = probs[1] # Class 1 (Cancer)
+            
+            # Make a strict copy and drop to float32 to guarantee it is mutable 
+            # and to save even more memory!
+            cancer_prob = np.array(probs[1], dtype=np.float32) # Class 1 (Cancer)
             
             # MEMORY LEAK FIX: Zero out ultra-low confidence background noise
             # This prevents picai_eval from generating millions of useless lesion candidates
@@ -100,7 +103,7 @@ def evaluate_metrics(val_dir: Path, gt_dir: Path, marksheet_path: Path):
         y_true=y_true_files,
         y_det=valid_y_det,
         subject_list=[Path(f).name.replace(".nii.gz", "") for f in y_true_files],
-        num_parallel_calls=4
+        num_parallel_calls=2
     )
     
     print("\n" + "="*50)
